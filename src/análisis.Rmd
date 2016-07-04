@@ -1,0 +1,163 @@
+---
+title: "Análisis Preliminar"
+author: "José Antonio Ramírez Moguel"
+date: "July 3, 2016"
+output: html_document
+---
+<STYLE TYPE="text/css">
+<!--
+  td{
+    font-family: Arial; 
+    font-size: 8pt;
+    padding:0px;
+    cellpadding="0";
+    cellspacing="0"
+  }
+  th {
+    font-family: Arial; 
+    font-size: 8pt;
+    height: 20px;
+    font-weight: bold;
+    text-align: right;
+    background-color: #ccccff;
+  }
+  table { 
+    border-spacing: 0px;
+    border-collapse: collapse;
+  }
+--->
+</STYLE>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Análisis Exploratorio
+
+### Preliminares
+Recibimos un archivo, formato csv con 14 variables y 270 renglones de las cuales tenemos 135 etiquetadas y 
+de las cuales se nos pide etiquetar las restantes en base a un modelo a escoger
+
+### Análisis Exploratorio
+
+Primero realizamos un análisis exploratorio de los datos. Revisamos las covariables (variables 2 a 14) del dataset y nos enfocamos primeramente en analizar la correlación que presentan dichas variablas para saber si conviene o no utilizarlas en el modelo que propongamos.
+
+Vemos a continuación la matriz de correlaciones la cual nos indica que no existe mayor correlacion entre las 13 covariables de nuestro dataset:
+
+```{r exploratorio}
+library(knitr, quietly = T)
+rm(list = ls())
+rutawork = ('/home/ramja/ssd/proyectos/miroculus/Test')
+
+datos_ori <- read.csv(paste(rutawork,'/data/Miroculus.test.csv',sep = ""), header = FALSE, sep = ",", quote="\"", dec=".", fill = TRUE)
+datos<-datos_ori[-1]
+Corr<-cor(datos)
+kable(Corr,format = "markdown", caption = "Matriz de Correlaciones", pad = 0)
+```
+
+Podemos observar que no existe mayor correlacion entre las 13 covariables de nuestro dataset:
+
+```{r exploratorio2, echo=FALSE}
+corr2<-Corr[which(Corr < 1)]
+maxCorr<-corr2[which.max(corr2)]
+print( paste("Máximo valor de correlación:", maxCorr))
+```
+Por lo anterior escogeremos utilizar todas las covariables en la creación de nuestro modelo predictivo ya que descartar una de ellas sería perder gran parte de la información que nos pueda dar un mejor resultado en la clasificación.
+
+
+##Selección de Modelos
+
+Realizaremos primeramente la comparación entre dos modelos elegidos:
+
+1. Clasificador KNN
+2. Support Vector Classifier
+
+Probaremos estos 2 modelos con la siguiente metodología:  
+Obtener del data set aquellos elementos que se encuentran etiquetados y separarlos del resto (__Test Set__).    
+Con aquellos renglones que están etiquetados separarlos en dos conjuntos mediante un sampling del conjunto original.  
+a. __Train Set.__ Será con el que entrenemos los modelos consistirá en las 2 terceras partes de los datos etiquetados tomados aleatoriamente.  
+b. __Validation Set.__ Será el conjunto de datos que utilizaremos para hacer cross validation entre los modelos que probaremos.  
+
+```{r separacion}
+val<-datos_ori[which(datos_ori['V1']!='?'),]
+m <- dim(val)[1]
+testdtlength <- round(m/3)
+sam <- sample(1:m, size = round(m/3), replace = FALSE, 
+              prob = rep(1/m, m)) 
+datos.train <- val[-sam,]
+datos.valid <- val[sam,]
+datos.test <- datos_ori[which(datos_ori['V1']=='?'),-1]
+
+```
+```{r cardinalida, echo=FALSE}
+print( paste("Cardinalidad del Train Set:", dim(datos.train)[1]))
+print( paste("Cardinalidad del Validation Set:", dim(datos.valid)[1]))
+```
+
+##Clasificador KNN
+La intención al escoger este clasificador es el de tratar de anular la alta dimensionalidad del espacio de covariables (13) y probar la precisión (accuracy) del modelo.
+Probamos manualmente varios valores para el parámetro del kernel así como de los parámetros de distancia y número de vecinos.
+
+```{r kknn, echo= FALSE}
+kknnInstalled = require("kknn") 
+if(!kknnInstalled){ install.packages("kknn", repos = "http://cran.itam.mx/") } 
+library(kknn)
+set.seed(428375483)
+```
+
+```{r knn2}
+datos.kknn <- kknn(V1~., datos.train, datos.valid, distance = 1, k=7,
+                  kernel = "optimal")
+##summary(datos.kknn)
+fit <- fitted(datos.kknn)
+res<-table(datos.valid$V1, fit)
+accuracy<-(res[3,3]+res[2,2])/sum(res)
+kable(res,caption = "Resultados", pad = 0)
+
+```
+```{r accuracy1, echo=FALSE}
+print( paste("Accuracy:", format(round(accuracy, 2), nsmall = 2)))
+```
+### Support Vector Classifier
+El siguiente modelo que probaremos es el de Support Vector Machines. La razón para probar este modelo es que contamos con 13 covariables verdaderamente independientes lo cual nos hace pensar que un clasificador o un regresor estadístico pueda tener buenos resultados. El modelo de Support Vector Machines en cierta forma optimiza a los regresores estadísticos por lo que escogimos este modelo.
+
+```{r svm1, echo= FALSE}
+svmInstalled = require("e1071")
+if(!svmInstalled){ install.packages("e1071") } 
+library(e1071)
+```
+
+```{r svm2}
+svm.model <- svm(V1 ~ ., data = datos.train, cost = 1000, gamma = 0.0001)
+svm.pred  <- predict(svm.model, datos.valid[,-1])
+res<-table(datos.valid$V1, svm.pred)
+
+accuracy<-(res[3,3]+res[2,2])/sum(res)
+kable(res,caption = "Resultados", pad = 0)
+
+```
+```{r accuracy2, echo=FALSE}
+print( paste("Accuracy:", format(round(accuracy, 2), nsmall = 2)))
+```
+
+###Siguientes Pasos
+Después de ejecutar estos 2 modelos no podemos encontrar una diferencia sustancial que nos obligue a escoger uno de ellos.
+Es por esto que intentaremos realizar una prueba con la técnica de Boosting para tratar de mejorar alguno de ellos sustancialmente en cuanto a la precisión de clasificación en el conjunto de validación cruzada.
+
+Ver notebook anexo: Boost.ipynb
+
+##Conclusiones
+Probamos los 2 modelos aquí revisados mas 2 con la técnica de boosting sin obtener una mejora en los resultados del accuracy.
+Aplicamos el modelo que mejor precisión tuvo en el conjunto de datos de validación. Esta validación, aunque se hizo parametrizando manualmente los modelos nos da una idea del modelo que mejor ajustaría los datos del conjunto de test. En este caso el mejor modelo fué el Clasificador SVM 
+Generaremos nuestros resultados mediante este modelo. Para esto tomaremos como conjunto de entrenamiento al conjunto completo de datos etiquetados tratando de capturar la mayor cantidad de información para el aprendizaje
+
+```{r resultados}
+datos.train <- datos_ori[which(datos_ori['V1']!='?'),]
+svm.model <- svm(V1 ~ ., data = datos.train, cost = 1000, gamma = 0.0001)
+svm.pred  <- predict(svm.model, datos.test)
+
+result<-cbind(svm.pred,datos.test)
+#write.csv(result,'data/Miroculus.result.csv')
+
+```
+

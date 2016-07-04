@@ -1,0 +1,9 @@
+matplotlib
+plotly
+awscli
+rpy2
+numpy
+pandas
+scikit-learn
+
+
